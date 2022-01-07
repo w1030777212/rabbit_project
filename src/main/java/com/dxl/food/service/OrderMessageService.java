@@ -1,9 +1,14 @@
 package com.dxl.food.service;
 
-import com.rabbitmq.client.BuiltinExchangeType;
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
+import com.dxl.food.dao.OrderDetailMapper;
+import com.dxl.food.dto.OrderMessageDTO;
+import com.dxl.food.enumoperation.OrderStatus;
+import com.dxl.food.po.OrderDetailPO;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rabbitmq.client.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.concurrent.TimeoutException;
@@ -12,11 +17,17 @@ import java.util.concurrent.TimeoutException;
  * @author : dxl
  * @version: 2022/1/5  15:13
  */
+@Service
 public class OrderMessageService {
-    public void handlerMessage(){
+    @Autowired
+    OrderDetailMapper orderDetailMapper;
+
+    @Async
+    public void handlerMessage() throws InterruptedException {
         //构造连接，连接rabbitmq server
         ConnectionFactory connectionFactory = new ConnectionFactory();
         connectionFactory.setHost("localhost");
+        DeliverCallback deliverCallback = null;
         //创建连接，以及创建channel
         try {
             try(Connection connection = connectionFactory.newConnection();
@@ -60,12 +71,63 @@ public class OrderMessageService {
                         "exchange.order.deliveryman",
                         "key.order"
                 );
-
+                channel.basicConsume(
+                        "queue.order",
+                        true,
+                        deliverCallback,
+                        consumerTag -> {}
+                        );
             }
         } catch (IOException e) {
 
         } catch (TimeoutException e) {
             e.printStackTrace();
+        }
+        deliverCallback = ((consumerTag, message) -> {
+            //消息体
+            byte[] body = message.getBody();
+            ObjectMapper objectMapper = new ObjectMapper();
+            OrderMessageDTO orderMessageDTO = objectMapper.readValue(body, OrderMessageDTO.class);
+            final OrderDetailPO orderDetailPO = orderDetailMapper.selectOrder(orderMessageDTO.getOrderId());
+            OrderStatus status = orderMessageDTO.getOrderStatus();
+            switch (status){
+                case ORDER_CREATING:
+                    if (orderMessageDTO.getConfirmed() && orderMessageDTO.getPrice() != null){
+                        orderDetailPO.setPrice(orderMessageDTO.getPrice());
+                        orderDetailPO.setStatus(OrderStatus.RESTAURANT_CONFIRMED);
+                        orderDetailMapper.update(orderDetailPO);
+                        try(Connection connection = connectionFactory.newConnection();
+                            Channel channel = connection.createChannel())
+                        {
+                            String messageToSend = objectMapper.writeValueAsString(orderMessageDTO);
+                            channel.basicPublish(
+                                    "exchange.order.deliveryman",
+                                    "key.deliverman",
+                                    null,
+                                    messageToSend.getBytes()
+                                    );
+                        }catch (Exception e){
+
+                        }
+                    }else {
+                        orderDetailPO.setStatus(OrderStatus.FAILED);
+                        orderDetailMapper.update(orderDetailPO);
+                    }
+                    break;
+                case RESTAURANT_CONFIRMED:
+                    break;
+                case DELIVERYMAN_CONFIRMED:
+                    break;
+                case SETTLEMENT_CONFIRMED:
+                    break;
+                case ORDER_CREATED:
+                    break;
+                case FAILED:
+                    break;
+            }
+        });
+        while (true){
+            Thread.sleep(1000000);
         }
     }
 }

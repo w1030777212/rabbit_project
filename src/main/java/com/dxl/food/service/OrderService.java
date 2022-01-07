@@ -24,6 +24,7 @@ import java.util.concurrent.TimeoutException;
 public class OrderService {
     @Autowired
     private OrderDetailMapper orderDetailMapper;
+
     private ObjectMapper objectMapper;
 
     public void createOrder(OrderCreateVO orderCreateVO) throws IOException, TimeoutException {
@@ -40,13 +41,16 @@ public class OrderService {
         orderMessageDTO.setOrderId(orderPO.getId());
         orderMessageDTO.setProductId(orderPO.getProductId());
         orderMessageDTO.setAccountId(orderCreateVO.getAccountId());
-
         ConnectionFactory connectionFactory = new ConnectionFactory();
         connectionFactory.setHost("localhost");
-
+        //创建物理连接、逻辑连接
+        //使用channel发布消息到exchange
         try (Connection connection = connectionFactory.newConnection();
+             //传送的消息为对象，先将其序列化为字节流传输
              Channel channel = connection.createChannel()) {
             String messageToSend = objectMapper.writeValueAsString(orderMessageDTO);
+            //exchange:要发布到的exchange
+            //routingkey:消息键
             channel.basicPublish("exchange.order.restaurant", "key.restaurant", null, messageToSend.getBytes());
         }
     }
