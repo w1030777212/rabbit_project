@@ -11,6 +11,7 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.Date;
@@ -21,11 +22,12 @@ import java.util.concurrent.TimeoutException;
  * @version: 2022/1/5  15:40
  */
 @Slf4j
+@Service
 public class OrderService {
     @Autowired
     private OrderDetailMapper orderDetailMapper;
 
-    private ObjectMapper objectMapper;
+    private ObjectMapper objectMapper = new ObjectMapper();
 
     public void createOrder(OrderCreateVO orderCreateVO) throws IOException, TimeoutException {
         log.info("createOrder:orderCreateVO:{}", orderCreateVO);
@@ -51,7 +53,7 @@ public class OrderService {
             String messageToSend = objectMapper.writeValueAsString(orderMessageDTO);
             //exchange:要发布到的exchange
             //routingkey:消息键
-            channel.basicPublish("exchange.order.restaurant", "key.restaurant", null, messageToSend.getBytes());
+            channel.basicPublish("exchange.order.resturant", "key.resturant", null, messageToSend.getBytes());
         }
     }
 }
