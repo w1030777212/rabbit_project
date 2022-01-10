@@ -7,6 +7,7 @@ import com.dxl.food.po.OrderDetailPO;
 import com.dxl.food.vo.OrderCreateVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.ConfirmListener;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +30,7 @@ public class OrderService {
 
     private ObjectMapper objectMapper = new ObjectMapper();
 
-    public void createOrder(OrderCreateVO orderCreateVO) throws IOException, TimeoutException {
+    public void createOrder(OrderCreateVO orderCreateVO) throws IOException, TimeoutException, InterruptedException {
         log.info("createOrder:orderCreateVO:{}", orderCreateVO);
         OrderDetailPO orderPO = new OrderDetailPO();
         orderPO.setAddress(orderCreateVO.getAddress());
@@ -53,7 +54,9 @@ public class OrderService {
             String messageToSend = objectMapper.writeValueAsString(orderMessageDTO);
             //exchange:要发布到的exchange
             //routingkey:消息键
+
             channel.basicPublish("exchange.order.resturant", "key.resturant", null, messageToSend.getBytes());
+
         }
     }
 }

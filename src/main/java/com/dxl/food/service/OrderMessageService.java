@@ -122,10 +122,76 @@ public class OrderMessageService {
             OrderMessageDTO orderMessageDTO = objectMapper.readValue(messageBody,
                     OrderMessageDTO.class);
             OrderDetailPO orderPO = orderDetailMapper.selectOrder(orderMessageDTO.getOrderId());
+            switch (orderPO.getStatus()) {
+                case ORDER_CREATING:
+                    if (orderMessageDTO.getConfirmed() && null != orderMessageDTO.getPrice()) {
+                        orderPO.setStatus(OrderStatus.RESTAURANT_CONFIRMED);
+                        orderPO.setPrice(orderMessageDTO.getPrice());
+                        orderDetailMapper.update(orderPO);
+                        try (Connection connection = connectionFactory.newConnection();
+                             Channel channel = connection.createChannel()) {
+                            String messageToSend = objectMapper.writeValueAsString(orderMessageDTO);
+                            channel.basicPublish("exchange.order.deliveryman", "key.deliveryman", null,
+                                    messageToSend.getBytes());
+                        }
+                    } else {
+                        orderPO.setStatus(OrderStatus.FAILED);
+                        orderDetailMapper.update(orderPO);
+                    }
+                    break;
+                case RESTAURANT_CONFIRMED:
+                    if (null != orderMessageDTO.getDeliverymanId()){
+                        orderPO.setStatus(OrderStatus.DELIVERYMAN_CONFIRMED);
+                        orderPO.setDeliverymanId(orderMessageDTO.getDeliverymanId());
+                        orderDetailMapper.update(orderPO);
+                        try (Connection connection = connectionFactory.newConnection();
+                             Channel channel = connection.createChannel()){
+                            final String messageToSend = objectMapper.writeValueAsString(orderMessageDTO);
+                            channel.basicPublish("exchange.order.settlement",
+                                    "key.settlement",
+                                    null,
+                                    messageToSend.getBytes());
+                        }
+                    }else {
+                        orderPO.setStatus(OrderStatus.FAILED);
+                        orderDetailMapper.update(orderPO);
+                    }
+                    break;
+                case DELIVERYMAN_CONFIRMED:
+                    if (null != orderMessageDTO.getSettlementId()){
+                        orderPO.setStatus(OrderStatus.SETTLEMENT_CONFIRMED);
+                        orderPO.setSettlementId(orderMessageDTO.getSettlementId());
+                        orderDetailMapper.update(orderPO);
+                        try (Connection connection = connectionFactory.newConnection();
+                             Channel channel = connection.createChannel()){
+                            final String messageToSend = objectMapper.writeValueAsString(orderMessageDTO);
+                            channel.basicPublish("exchange.order.reward",
+                                    "key.reward",
+                                    null,
+                                    messageToSend.getBytes());
+                        }
+                    }else {
+                        orderPO.setStatus(OrderStatus.FAILED);
+                        orderDetailMapper.update(orderPO);
+                    }
+                    break;
+                case SETTLEMENT_CONFIRMED:
+                    if (null != orderMessageDTO.getRewardId()){
+                        orderPO.setStatus(OrderStatus.ORDER_CREATED);
+                        orderPO.setRewardId(orderMessageDTO.getRewardId());
+                        orderDetailMapper.update(orderPO);
+                    }else {
+                        orderPO.setStatus(OrderStatus.FAILED);
+                        orderDetailMapper.update(orderPO);
+                    }
+                    break;
+                case ORDER_CREATED:
+                    break;
+                case FAILED:
+                    break;
+            }
 
-
-
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     };
